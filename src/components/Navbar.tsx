@@ -55,11 +55,11 @@ export default function Navbar() {
           {/* ── Nav links ── */}
           <div className="hidden sm:flex items-center gap-0.5">
             {[
-              { label: "Memories", href: "#memories" },
-              { label: "Photobooth", href: "#photobooth" },
-              { label: "Bucket List", href: "#bucket-list" },
+              { label: "Memories", href: "/#memories" },
+              { label: "Bucket List", href: "/#bucket-list" },
+              { label: "Photobooth", href: "/photobooth" },
             ].map((item) => (
-              <a
+              <Link
                 key={item.label}
                 href={item.href}
                 className="px-3.5 py-1.5 text-sm font-medium rounded-xl transition-all duration-200"
@@ -72,7 +72,7 @@ export default function Navbar() {
                 }
               >
                 {item.label}
-              </a>
+              </Link>
             ))}
           </div>
 
