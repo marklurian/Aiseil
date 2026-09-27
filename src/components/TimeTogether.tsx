@@ -34,11 +34,13 @@ function getTimeTogether(): TimeUnit[] {
   ];
 }
 
+const CUBIC: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
 const tileVariants = {
   hidden: { opacity: 0, y: 28, scale: 0.92 },
   visible: (i: number) => ({
     opacity: 1, y: 0, scale: 1,
-    transition: { delay: 0.85 + i * 0.13, duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+    transition: { delay: 0.85 + i * 0.13, duration: 0.5, ease: CUBIC },
   }),
 };
 

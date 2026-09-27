@@ -9,23 +9,25 @@ import BucketList from "@/components/BucketList";
 import SakuraPetals from "@/components/SakuraPetals";
 
 /* ── Framer Motion variants ──────────────────────────────────── */
+const CUBIC: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
 const heroTitle = {
   hidden:  { opacity: 0, y: 44 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.75, ease: CUBIC } },
 };
 const heroSub = {
   hidden:  { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { delay: 0.22, duration: 0.65, ease: "easeOut" } },
+  visible: { opacity: 1, y: 0, transition: { delay: 0.22, duration: 0.65, ease: "easeOut" as const } },
 };
 const heroCta = {
   hidden:  { opacity: 0, y: 18 },
-  visible: { opacity: 1, y: 0, transition: { delay: 0.42, duration: 0.55, ease: "easeOut" } },
+  visible: { opacity: 1, y: 0, transition: { delay: 0.42, duration: 0.55, ease: "easeOut" as const } },
 };
 const widgetVariants = {
   hidden:  { opacity: 0, y: 38, scale: 0.97 },
   visible: (i: number) => ({
     opacity: 1, y: 0, scale: 1,
-    transition: { delay: 1.1 + i * 0.18, duration: 0.6, ease: [0.22, 1, 0.36, 1] },
+    transition: { delay: 1.1 + i * 0.18, duration: 0.6, ease: CUBIC },
   }),
 };
 

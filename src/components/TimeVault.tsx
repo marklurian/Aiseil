@@ -78,12 +78,14 @@ function FlipDigit({ digit, accent }: { digit: string; accent?: boolean }) {
   );
 }
 
+const CUBIC: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
 /* ─── Time tile (glassmorphic card) ───────────────────────────── */
 const tileVariants = {
   hidden:  { opacity: 0, y: 22, scale: 0.88 },
   visible: (i: number) => ({
     opacity: 1, y: 0, scale: 1,
-    transition: { delay: 0.82 + i * 0.09, duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+    transition: { delay: 0.82 + i * 0.09, duration: 0.5, ease: CUBIC },
   }),
 };
 
@@ -223,7 +225,7 @@ export default function TimeVault() {
     <motion.section
       initial={{ opacity: 0, y: 26 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ delay: 0.5, duration: 0.7, ease: CUBIC }}
       className="mt-10 flex flex-col items-center gap-5"
       aria-label="Time we have been together"
     >
