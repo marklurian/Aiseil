@@ -51,7 +51,24 @@ function calculateElapsed(): RawUnit[] {
 }
 
 /* ─── Single animated digit ───────────────────────────────────── */
-function FlipDigit({ digit, accent }: { digit: string; accent?: boolean }) {
+function FlipDigit({ digit, accent, mounted }: { digit: string; accent?: boolean; mounted?: boolean }) {
+  if (!mounted) {
+    return (
+      <span
+        suppressHydrationWarning
+        style={{
+          display: "block",
+          lineHeight: 1,
+          height: "1em",
+          minWidth: "0.6em",
+          textAlign: "center",
+        }}
+      >
+        {digit}
+      </span>
+    );
+  }
+
   return (
     <div
       style={{
@@ -94,7 +111,8 @@ function TimeTile({
   label,
   accent,
   index,
-}: RawUnit & { index: number }) {
+  mounted,
+}: RawUnit & { index: number; mounted?: boolean }) {
   const padded = String(value).padStart(2, "0");
   const [d1, d2] = padded.split("");
 
@@ -132,8 +150,8 @@ function TimeTile({
           }}
           aria-label={`${value} ${label}`}
         >
-          <FlipDigit digit={d1} accent={accent} />
-          <FlipDigit digit={d2} accent={accent} />
+          <FlipDigit digit={d1} accent={accent} mounted={mounted} />
+          <FlipDigit digit={d2} accent={accent} mounted={mounted} />
         </div>
 
         {/* Divider */}
@@ -200,9 +218,13 @@ function Separator({ variant = "colon" }: { variant?: "colon" | "dot" }) {
 
 /* ─── Main component ──────────────────────────────────────────── */
 export default function TimeVault() {
+  const [mounted, setMounted] = useState(false);
   const [units, setUnits] = useState<RawUnit[]>(calculateElapsed);
 
   useEffect(() => {
+    setMounted(true);
+    setUnits(calculateElapsed());
+
     // Align the first tick to the top of the next wall-clock second
     // so the display stays in sync with the system clock.
     const msUntilNextSecond = 1000 - (Date.now() % 1000);
@@ -269,11 +291,11 @@ export default function TimeVault() {
       <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-3">
         {/* Y · M · D */}
         <div className="flex items-end gap-1.5" role="group" aria-label="Years, months, days">
-          <TimeTile {...years}   index={0} />
+          <TimeTile {...years}   index={0} mounted={mounted} />
           <Separator variant="dot" />
-          <TimeTile {...months}  index={1} />
+          <TimeTile {...months}  index={1} mounted={mounted} />
           <Separator variant="dot" />
-          <TimeTile {...days}    index={2} />
+          <TimeTile {...days}    index={2} mounted={mounted} />
         </div>
 
         {/* Group divider — visible on sm+ */}
@@ -288,11 +310,11 @@ export default function TimeVault() {
 
         {/* H : M : S */}
         <div className="flex items-end gap-1.5" role="group" aria-label="Hours, minutes, seconds">
-          <TimeTile {...hours}   index={3} />
+          <TimeTile {...hours}   index={3} mounted={mounted} />
           <Separator variant="colon" />
-          <TimeTile {...minutes} index={4} />
+          <TimeTile {...minutes} index={4} mounted={mounted} />
           <Separator variant="colon" />
-          <TimeTile {...seconds} index={5} />
+          <TimeTile {...seconds} index={5} mounted={mounted} />
         </div>
       </div>
 
