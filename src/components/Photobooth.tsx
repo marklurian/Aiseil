@@ -21,6 +21,8 @@ import {
   Eye,
   Heart,
   Sparkles,
+  Palette,
+  Type,
 } from "lucide-react";
 import { supabase, BUCKET } from "@/lib/supabase";
 
@@ -28,12 +30,17 @@ import { supabase, BUCKET } from "@/lib/supabase";
 const DEFAULT_NAMES = "Mark + Aiseil";
 const DEFAULT_DATE = "02.07.2020";
 const DEFAULT_SUBTITLE = "OUR FOREVER";
+const DEFAULT_QUOTE = "Thank you for your love and support";
 
-const QUOTE_PRESETS = [
-  { line1: "Thank you for your", line2: "love and support" },
-  { line1: "Every moment with you", line2: "is pure magic" },
-  { line1: "You will forever be", line2: "my always" },
-  { line1: "Happy Anniversary", line2: "my favorite person" },
+/* ─── Paper Color Presets ─────────────────────────────────────── */
+export const PAPER_PRESETS = [
+  { name: "Cream", hex: "#faf7f2", label: "Warm Cream" },
+  { name: "White", hex: "#ffffff", label: "Classic White" },
+  { name: "Blush", hex: "#fdf0f5", label: "Blush Pink" },
+  { name: "Peach", hex: "#fff4ed", label: "Soft Peach" },
+  { name: "Sage", hex: "#f1f5ee", label: "Matcha Sage" },
+  { name: "Lavender", hex: "#f5f2fa", label: "Muted Lavender" },
+  { name: "Noir", hex: "#1c1917", label: "Midnight Noir" },
 ];
 
 /* ─── Constants ───────────────────────────────────────────────── */
@@ -62,6 +69,23 @@ type Phase = "idle" | "shooting" | "rendering" | "preview" | "saving";
 
 /* ─── Utilities ───────────────────────────────────────────────── */
 const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+
+function isDarkColor(color: string): boolean {
+  const c = color.replace("#", "");
+  let r = 255;
+  let g = 255;
+  let b = 255;
+  if (c.length === 3) {
+    r = parseInt(c[0] + c[0], 16);
+    g = parseInt(c[1] + c[1], 16);
+    b = parseInt(c[2] + c[2], 16);
+  } else if (c.length === 6) {
+    r = parseInt(c.slice(0, 2), 16);
+    g = parseInt(c.slice(2, 4), 16);
+    b = parseInt(c.slice(4, 6), 16);
+  }
+  return 0.299 * r + 0.587 * g + 0.114 * b < 135;
+}
 
 function dataURLtoBlob(dataUrl: string): Blob {
   const [header, data] = dataUrl.split(",");
@@ -93,7 +117,8 @@ function downloadImage(dataUrl: string, filename: string) {
 
 function playShutterSound() {
   try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const ctx = new (window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -108,6 +133,36 @@ function playShutterSound() {
   } catch {
     // AudioContext blocked or unsupported, silent fallback
   }
+}
+
+/**
+ * Ensures Google Fonts (Alex Brush and Cormorant Garamond) are in memory
+ * using native FontFace API before drawing to canvas.
+ */
+async function ensureFontsLoaded() {
+  if (typeof document === "undefined" || !document.fonts) return;
+  try {
+    const alexBrush = new FontFace(
+      "Alex Brush",
+      "url(https://fonts.gstatic.com/s/alexbrush/v23/SZc83FzrJKuqFbwMKk6EtUI.ttf)"
+    );
+    await alexBrush.load();
+    document.fonts.add(alexBrush);
+  } catch {}
+
+  try {
+    const cormorant = new FontFace(
+      "Cormorant Garamond",
+      "url(https://fonts.gstatic.com/s/cormorantgaramond/v21/co3umX5slCNuHLi8bLeY9MK7whWMhyjypVO7abI26QOD_iE9GnM.ttf)",
+      { weight: "600" }
+    );
+    await cormorant.load();
+    document.fonts.add(cormorant);
+  } catch {}
+
+  try {
+    await document.fonts.ready;
+  } catch {}
 }
 
 /**
@@ -139,22 +194,64 @@ function drawCoverImage(
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
+/**
+ * Dynamically wraps custom quote text to fit note card width with optimal font size
+ */
+function wrapQuoteText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): { lines: string[]; fontSize: number; lineHeight: number } {
+  const candidateSizes = [46, 42, 38, 34, 30, 26, 22];
+
+  for (const fontSize of candidateSizes) {
+    ctx.font = `400 ${fontSize}px 'Alex Brush', 'Dancing Script', 'Great Vibes', 'Brush Script MT', cursive`;
+    const paragraphs = text.split("\n");
+    const lines: string[] = [];
+
+    for (const p of paragraphs) {
+      const words = p.trim().split(/\s+/);
+      if (!words[0]) continue;
+      let cur = words[0];
+
+      for (let i = 1; i < words.length; i++) {
+        const w = words[i];
+        if (ctx.measureText(cur + " " + w).width <= maxWidth) {
+          cur += " " + w;
+        } else {
+          lines.push(cur);
+          cur = w;
+        }
+      }
+      if (cur) lines.push(cur);
+    }
+
+    const lineHeight = Math.round(fontSize * 1.15);
+    const totalHeight = lines.length * lineHeight;
+
+    if (lines.length <= 4 && totalHeight <= 170) {
+      return { lines: lines.length > 0 ? lines : [text], fontSize, lineHeight };
+    }
+  }
+
+  const fontSize = 20;
+  const lineHeight = 24;
+  return { lines: [text], fontSize, lineHeight };
+}
+
 /* ─── Canvas Compositors ──────────────────────────────────────── */
 
 /**
- * Template A: Postcard Print (Left layout from user's reference image)
- * 1 Big Hero Photo + 3 Mini Photos + Rotated Vertical Names + Calligraphy Love Note
+ * Template A: Postcard Print (Left layout from reference image)
+ * 1 Big Hero Photo + 3 Mini Photos + Rotated Vertical Names + Fully Custom Calligraphy Love Note
  */
 async function renderPostcardLayout(
   captures: string[],
   filter: string,
-  quoteIndex: number = 0
+  customQuote: string,
+  paperColor: string
 ): Promise<string> {
-  if (typeof document !== "undefined" && document.fonts) {
-    try {
-      await document.fonts.ready;
-    } catch {}
-  }
+  await ensureFontsLoaded();
 
   const W = 1200;
   const H = 800;
@@ -164,12 +261,14 @@ async function renderPostcardLayout(
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // 1. Warm ivory background matching authentic luxury print paper
-  ctx.fillStyle = "#faf8f5";
+  const dark = isDarkColor(paperColor);
+
+  // 1. Paper background
+  ctx.fillStyle = paperColor || "#faf7f2";
   ctx.fillRect(0, 0, W, H);
 
-  // Subtle interior paper bleed border
-  ctx.strokeStyle = "rgba(0,0,0,0.03)";
+  // Subtle interior paper border
+  ctx.strokeStyle = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)";
   ctx.lineWidth = 1;
   ctx.strokeRect(1, 1, W - 2, H - 2);
 
@@ -177,8 +276,8 @@ async function renderPostcardLayout(
   ctx.save();
   ctx.translate(46, H / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = "#1e1e1e";
-  ctx.font = "500 19px 'Cormorant Garamond', 'Playfair Display', Georgia, serif";
+  ctx.fillStyle = dark ? "#f5f5f4" : "#1e1e1e";
+  ctx.font = "600 19px 'Cormorant Garamond', 'Playfair Display', Georgia, serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   if ("letterSpacing" in ctx) {
@@ -193,7 +292,6 @@ async function renderPostcardLayout(
   const totalContentW = contentRight - contentLeft; // 1064
 
   // Top Section:
-  // Photo 1 takes 64% of content width
   const heroW = 676;
   const heroH = 448;
   const topY = 44;
@@ -210,22 +308,27 @@ async function renderPostcardLayout(
   const noteW = contentRight - noteLeft; // 388
   const noteCenterX = noteLeft + noteW / 2;
 
-  // Calligraphy script quote
-  const activeQuote = QUOTE_PRESETS[quoteIndex] || QUOTE_PRESETS[0];
+  // Fully custom calligraphy script quote
+  const quoteText = customQuote.trim() || DEFAULT_QUOTE;
+  const { lines, fontSize, lineHeight } = wrapQuoteText(ctx, quoteText, noteW - 48);
 
-  ctx.fillStyle = "#2c2a29";
-  ctx.font = "400 42px 'Alex Brush', 'Dancing Script', 'Brush Script MT', cursive";
+  ctx.fillStyle = dark ? "#fafaf9" : "#2a2827";
+  ctx.font = `400 ${fontSize}px 'Alex Brush', 'Dancing Script', 'Great Vibes', 'Brush Script MT', cursive`;
   ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
+  ctx.textBaseline = "middle";
   if ("letterSpacing" in ctx) {
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "0px";
   }
 
-  ctx.fillText(activeQuote.line1, noteCenterX, 205);
-  ctx.fillText(activeQuote.line2, noteCenterX, 255);
+  const quoteBlockHeight = (lines.length - 1) * lineHeight;
+  const quoteStartY = 200 - quoteBlockHeight / 2;
+
+  lines.forEach((line, idx) => {
+    ctx.fillText(line, noteCenterX, quoteStartY + idx * lineHeight);
+  });
 
   // Thin minimalist horizontal divider
-  ctx.strokeStyle = "rgba(100, 100, 100, 0.4)";
+  ctx.strokeStyle = dark ? "rgba(255, 255, 255, 0.28)" : "rgba(100, 100, 100, 0.35)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(noteCenterX - 45, 298);
@@ -233,7 +336,7 @@ async function renderPostcardLayout(
   ctx.stroke();
 
   // Date
-  ctx.fillStyle = "#4a4744";
+  ctx.fillStyle = dark ? "#d6d3d1" : "#4a4744";
   ctx.font = "500 14px 'Cormorant Garamond', 'Playfair Display', serif";
   if ("letterSpacing" in ctx) {
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "0.22em";
@@ -241,7 +344,7 @@ async function renderPostcardLayout(
   ctx.fillText(DEFAULT_DATE, noteCenterX, 332);
 
   // Subtitle / Location
-  ctx.fillStyle = "#5c5854";
+  ctx.fillStyle = dark ? "#a8a29e" : "#5c5854";
   ctx.font = "500 13px 'Cormorant Garamond', 'Playfair Display', serif";
   if ("letterSpacing" in ctx) {
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "0.25em";
@@ -252,7 +355,7 @@ async function renderPostcardLayout(
   const bottomY = 512;
   const bottomH = 244;
   const gap = 16;
-  const miniW = (totalContentW - gap * 2) / 3; // (1064 - 32) / 3 = 344
+  const miniW = (totalContentW - gap * 2) / 3; // 344
 
   for (let i = 1; i < Math.min(captures.length, 4); i++) {
     const miniImg = await loadImg(captures[i]);
@@ -266,18 +369,15 @@ async function renderPostcardLayout(
 }
 
 /**
- * Template B: Classic Film Strip (Right layout from user's reference image)
- * 4 Stacked Photos + Minimalist Footer Card
+ * Template B: Classic Film Strip (Right layout from reference image)
+ * 4 Stacked Photos + Minimalist Footer Card with customizable paper color
  */
 async function renderStripLayout(
   captures: string[],
-  filter: string
+  filter: string,
+  paperColor: string
 ): Promise<string> {
-  if (typeof document !== "undefined" && document.fonts) {
-    try {
-      await document.fonts.ready;
-    } catch {}
-  }
+  await ensureFontsLoaded();
 
   const W = 460;
   const PAD_X = 26;
@@ -293,12 +393,14 @@ async function renderStripLayout(
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // Pure white paper
-  ctx.fillStyle = "#ffffff";
+  const dark = isDarkColor(paperColor);
+
+  // Paper background
+  ctx.fillStyle = paperColor || "#ffffff";
   ctx.fillRect(0, 0, W, H);
 
   // Subtle border
-  ctx.strokeStyle = "rgba(0,0,0,0.04)";
+  ctx.strokeStyle = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)";
   ctx.lineWidth = 1;
   ctx.strokeRect(1, 1, W - 2, H - 2);
 
@@ -315,7 +417,7 @@ async function renderStripLayout(
   const footY = PAD_TOP + TOTAL_SHOTS * (PH + GAP) - GAP + 24;
 
   // Couple names in elegant serif
-  ctx.fillStyle = "#1e1e1e";
+  ctx.fillStyle = dark ? "#fafaf9" : "#1e1e1e";
   ctx.font = "600 20px 'Cormorant Garamond', 'Playfair Display', Georgia, serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
@@ -325,7 +427,7 @@ async function renderStripLayout(
   ctx.fillText(DEFAULT_NAMES.toUpperCase(), W / 2, footY + 22);
 
   // Delicate divider line
-  ctx.strokeStyle = "rgba(100, 100, 100, 0.4)";
+  ctx.strokeStyle = dark ? "rgba(255, 255, 255, 0.28)" : "rgba(100, 100, 100, 0.4)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(W / 2 - 40, footY + 42);
@@ -333,7 +435,7 @@ async function renderStripLayout(
   ctx.stroke();
 
   // Date
-  ctx.fillStyle = "#525252";
+  ctx.fillStyle = dark ? "#d6d3d1" : "#525252";
   ctx.font = "500 13px 'Cormorant Garamond', 'Playfair Display', serif";
   if ("letterSpacing" in ctx) {
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "0.22em";
@@ -341,7 +443,7 @@ async function renderStripLayout(
   ctx.fillText(DEFAULT_DATE, W / 2, footY + 68);
 
   // Subtitle
-  ctx.fillStyle = "#6b7280";
+  ctx.fillStyle = dark ? "#a8a29e" : "#6b7280";
   ctx.font = "500 12px 'Cormorant Garamond', 'Playfair Display', serif";
   if ("letterSpacing" in ctx) {
     (ctx as unknown as { letterSpacing: string }).letterSpacing = "0.25em";
@@ -398,7 +500,9 @@ export default function Photobooth() {
   const abortRef = useRef(false);
   const filterRef = useRef(FILM_FILTERS[0]);
   const templateRef = useRef<TemplateType>("postcard");
-  const quoteRef = useRef(0);
+  const quoteRef = useRef(DEFAULT_QUOTE);
+  const paperColorRef = useRef("#faf7f2");
+  const quoteDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const [template, setTemplate] = useState<TemplateType>("postcard");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -408,7 +512,8 @@ export default function Photobooth() {
   const [captures, setCaptures] = useState<string[]>([]);
   const [renderedUrl, setRenderedUrl] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState(FILM_FILTERS[0]);
-  const [quoteIndex, setQuoteIndex] = useState(0);
+  const [paperColor, setPaperColor] = useState("#faf7f2");
+  const [customQuote, setCustomQuote] = useState(DEFAULT_QUOTE);
   const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
   const [loadingGallery, setLoadingGallery] = useState(true);
   const [cameraReady, setCameraReady] = useState(false);
@@ -416,7 +521,12 @@ export default function Photobooth() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
 
-  /* ── Sync refs ───────────────────────────────────────────────── */
+  /* Preload Google Fonts on mount */
+  useEffect(() => {
+    ensureFontsLoaded();
+  }, []);
+
+  /* Sync refs */
   useEffect(() => {
     templateRef.current = template;
   }, [template]);
@@ -426,8 +536,12 @@ export default function Photobooth() {
   }, [activeFilter]);
 
   useEffect(() => {
-    quoteRef.current = quoteIndex;
-  }, [quoteIndex]);
+    quoteRef.current = customQuote;
+  }, [customQuote]);
+
+  useEffect(() => {
+    paperColorRef.current = paperColor;
+  }, [paperColor]);
 
   /* ── Gallery Fetch ───────────────────────────────────────────── */
   const fetchGallery = useCallback(async () => {
@@ -462,11 +576,17 @@ export default function Photobooth() {
 
   /* ── Render function ─────────────────────────────────────────── */
   const doRender = useCallback(
-    async (shots: string[], templ: TemplateType, filt: string, quoteIdx: number) => {
+    async (
+      shots: string[],
+      templ: TemplateType,
+      filt: string,
+      quote: string,
+      color: string
+    ) => {
       if (templ === "postcard") {
-        return await renderPostcardLayout(shots, filt, quoteIdx);
+        return await renderPostcardLayout(shots, filt, quote, color);
       } else {
-        return await renderStripLayout(shots, filt);
+        return await renderStripLayout(shots, filt, color);
       }
     },
     []
@@ -478,20 +598,50 @@ export default function Photobooth() {
     setTemplate(newTempl);
     templateRef.current = newTempl;
     setPhase("rendering");
-    const url = await doRender(captures, newTempl, filterRef.current.value, quoteRef.current);
+    const url = await doRender(
+      captures,
+      newTempl,
+      filterRef.current.value,
+      quoteRef.current,
+      paperColorRef.current
+    );
     setRenderedUrl(url);
     setPhase("preview");
   };
 
-  /* ── Switch Quote Preset in Preview ──────────────────────────── */
-  const handleSwitchQuote = async (newIdx: number) => {
-    if (captures.length < TOTAL_SHOTS || template !== "postcard") return;
-    setQuoteIndex(newIdx);
-    quoteRef.current = newIdx;
-    setPhase("rendering");
-    const url = await doRender(captures, template, filterRef.current.value, newIdx);
-    setRenderedUrl(url);
-    setPhase("preview");
+  /* ── Switch Paper Color ──────────────────────────────────────── */
+  const handlePaperColorChange = async (color: string) => {
+    setPaperColor(color);
+    paperColorRef.current = color;
+    if (phase === "preview" && captures.length === TOTAL_SHOTS) {
+      const url = await doRender(
+        captures,
+        templateRef.current,
+        filterRef.current.value,
+        quoteRef.current,
+        color
+      );
+      setRenderedUrl(url);
+    }
+  };
+
+  /* ── Custom Quote Change with Debounced Re-render ────────────── */
+  const handleQuoteChange = (val: string) => {
+    setCustomQuote(val);
+    quoteRef.current = val;
+    if (phase === "preview" && captures.length === TOTAL_SHOTS && template === "postcard") {
+      if (quoteDebounceRef.current) clearTimeout(quoteDebounceRef.current);
+      quoteDebounceRef.current = setTimeout(async () => {
+        const url = await doRender(
+          captures,
+          "postcard",
+          filterRef.current.value,
+          val,
+          paperColorRef.current
+        );
+        setRenderedUrl(url);
+      }, 260);
+    }
   };
 
   /* ── Session: 4 auto-shots sequence ──────────────────────────── */
@@ -541,7 +691,8 @@ export default function Photobooth() {
       shots,
       templateRef.current,
       filterRef.current.value,
-      quoteRef.current
+      quoteRef.current,
+      paperColorRef.current
     );
     if (abortRef.current) return;
     setRenderedUrl(url);
@@ -622,7 +773,11 @@ export default function Photobooth() {
                 </h2>
                 <span
                   className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: "var(--bg-tag)", color: "var(--text-label)", border: "1px solid var(--border-glass)" }}
+                  style={{
+                    background: "var(--bg-tag)",
+                    color: "var(--text-label)",
+                    border: "1px solid var(--border-glass)",
+                  }}
                 >
                   <Sparkles size={10} /> 4-Shot Studio
                 </span>
@@ -633,8 +788,8 @@ export default function Photobooth() {
                   : isShooting
                   ? `Shot ${shotNum} of ${TOTAL_SHOTS} — smile & hold pose!`
                   : isPreview
-                  ? "Your print is ready! Switch layout, download, or save to memories."
-                  : "Choose Postcard or Film Strip layout · 4 automatic snaps"}
+                  ? "Customize paper color, edit custom quote, download, or save to memories."
+                  : "Choose Postcard or Strip layout · 4 automatic snaps"}
               </p>
             </div>
             <div
@@ -646,10 +801,10 @@ export default function Photobooth() {
             </div>
           </div>
 
-          {/* ── Controls Row (Template Picker & Film Filters) ─────── */}
+          {/* ── Controls Row (Idle Setup) ─────────────────────────── */}
           {phase === "idle" && (
-            <div className="flex flex-col gap-2.5">
-              {/* Template Toggle (Postcard vs Strip) */}
+            <div className="flex flex-col gap-3">
+              {/* Layout Switcher */}
               <div className="flex items-center justify-between gap-2 p-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-pink-200/30">
                 <span className="text-[11px] font-semibold pl-2 flex items-center gap-1.5 text-pink-700 dark:text-pink-300">
                   <Layout size={12} />
@@ -681,7 +836,60 @@ export default function Photobooth() {
                 </div>
               </div>
 
-              {/* Filters */}
+              {/* Paper Color Bar */}
+              <div className="flex items-center gap-2 p-2 rounded-2xl bg-pink-50/40 dark:bg-white/5 border border-pink-200/20">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-pink-700 dark:text-pink-300 flex-shrink-0">
+                  <Palette size={12} />
+                  Paper Color:
+                </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 flex-1" style={{ scrollbarWidth: "none" }}>
+                  {PAPER_PRESETS.map((p) => {
+                    const active = paperColor.toLowerCase() === p.hex.toLowerCase();
+                    return (
+                      <button
+                        key={p.hex}
+                        type="button"
+                        onClick={() => handlePaperColorChange(p.hex)}
+                        title={p.label}
+                        className={`relative w-6 h-6 rounded-full flex-shrink-0 transition-transform ${
+                          active ? "scale-115 ring-2 ring-pink-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-900" : "hover:scale-105 border border-neutral-300/40"
+                        }`}
+                        style={{ backgroundColor: p.hex }}
+                      />
+                    );
+                  })}
+                  {/* Custom color picker */}
+                  <label
+                    title="Choose custom paper color"
+                    className="relative w-6 h-6 rounded-full flex-shrink-0 cursor-pointer overflow-hidden border border-neutral-300/60 hover:scale-105 transition-transform flex items-center justify-center bg-gradient-to-tr from-rose-200 via-pink-300 to-amber-100"
+                  >
+                    <input
+                      type="color"
+                      value={paperColor}
+                      onChange={(e) => handlePaperColorChange(e.target.value)}
+                      className="opacity-0 absolute inset-0 cursor-pointer"
+                    />
+                    <Palette size={10} className="text-neutral-700 pointer-events-none" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Custom Quote Field (for Postcard) */}
+              {template === "postcard" && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-pink-50/40 dark:bg-white/5 border border-pink-200/20">
+                  <Type size={12} className="text-pink-600 dark:text-pink-400 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={customQuote}
+                    onChange={(e) => handleQuoteChange(e.target.value)}
+                    placeholder="Write your custom love quote here…"
+                    className="flex-1 text-xs bg-transparent border-0 outline-hidden font-medium text-neutral-800 dark:text-neutral-100 placeholder:text-neutral-400"
+                    maxLength={120}
+                  />
+                </div>
+              )}
+
+              {/* Film Filters */}
               <div className="flex items-center gap-1.5">
                 <SlidersHorizontal size={12} style={{ color: "var(--text-faint)", flexShrink: 0 }} />
                 <div
@@ -726,7 +934,7 @@ export default function Photobooth() {
           {/* ── Main Camera / Preview Box ─────────────────────────── */}
           <AnimatePresence mode="wait">
             {isPreview && renderedUrl ? (
-              /* ── Composite Preview ──────────────────────────────── */
+              /* ── Composite Preview with Customization Toolbar ───── */
               <motion.div
                 key="preview-card"
                 initial={{ opacity: 0, scale: 0.9, y: 14 }}
@@ -735,50 +943,93 @@ export default function Photobooth() {
                 transition={{ duration: 0.4, ease: CUBIC }}
                 className="flex flex-col items-center gap-3 py-1"
               >
-                {/* Switch Layout & Quote Toolbar in Preview */}
-                <div className="flex flex-wrap items-center justify-center gap-2 w-full">
-                  <div className="flex items-center gap-1 p-0.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pink-200/40 text-[10.5px]">
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchTemplate("postcard")}
-                      className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                        template === "postcard"
-                          ? "bg-white text-pink-600 shadow-xs dark:bg-pink-900/60 dark:text-pink-100"
-                          : "text-neutral-500 hover:text-pink-600"
-                      }`}
-                    >
-                      Postcard View
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSwitchTemplate("strip")}
-                      className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                        template === "strip"
-                          ? "bg-white text-pink-600 shadow-xs dark:bg-pink-900/60 dark:text-pink-100"
-                          : "text-neutral-500 hover:text-pink-600"
-                      }`}
-                    >
-                      Strip View
-                    </button>
+                {/* Customization Toolbar in Preview */}
+                <div className="flex flex-col gap-2.5 w-full bg-pink-50/50 dark:bg-neutral-900/50 p-2.5 rounded-2xl border border-pink-200/40">
+                  {/* Top line: Layout switch & Paper Color Swatches */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    {/* Layout switch */}
+                    <div className="flex items-center gap-1 p-0.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pink-200/40 text-[10.5px]">
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchTemplate("postcard")}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          template === "postcard"
+                            ? "bg-white text-pink-600 shadow-xs dark:bg-pink-900/60 dark:text-pink-100"
+                            : "text-neutral-500 hover:text-pink-600"
+                        }`}
+                      >
+                        Postcard View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchTemplate("strip")}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          template === "strip"
+                            ? "bg-white text-pink-600 shadow-xs dark:bg-pink-900/60 dark:text-pink-100"
+                            : "text-neutral-500 hover:text-pink-600"
+                        }`}
+                      >
+                        Strip View
+                      </button>
+                    </div>
+
+                    {/* Paper Color Swatches */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-semibold text-neutral-500 flex items-center gap-1">
+                        <Palette size={11} /> Paper:
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {PAPER_PRESETS.map((p) => {
+                          const active = paperColor.toLowerCase() === p.hex.toLowerCase();
+                          return (
+                            <button
+                              key={p.hex}
+                              type="button"
+                              onClick={() => handlePaperColorChange(p.hex)}
+                              title={p.label}
+                              className={`w-5 h-5 rounded-full transition-transform ${
+                                active
+                                  ? "scale-120 ring-2 ring-pink-500 ring-offset-1"
+                                  : "hover:scale-110 border border-neutral-300"
+                              }`}
+                              style={{ backgroundColor: p.hex }}
+                            />
+                          );
+                        })}
+                        {/* Custom color picker */}
+                        <label
+                          title="Pick custom color"
+                          className="relative w-5 h-5 rounded-full cursor-pointer overflow-hidden border border-neutral-300 hover:scale-110 transition-transform flex items-center justify-center bg-gradient-to-tr from-rose-200 via-pink-300 to-amber-100"
+                        >
+                          <input
+                            type="color"
+                            value={paperColor}
+                            onChange={(e) => handlePaperColorChange(e.target.value)}
+                            className="opacity-0 absolute inset-0 cursor-pointer"
+                          />
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
+                  {/* Bottom line: Fully custom quote input (when in Postcard View) */}
                   {template === "postcard" && (
-                    <select
-                      value={quoteIndex}
-                      onChange={(e) => handleSwitchQuote(Number(e.target.value))}
-                      className="text-[10px] font-semibold px-2 py-1 rounded-xl bg-pink-50/80 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/50 cursor-pointer outline-hidden"
-                      aria-label="Change postcard quote"
-                    >
-                      {QUOTE_PRESETS.map((q, idx) => (
-                        <option key={idx} value={idx}>
-                          Quote: {q.line1}…
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 dark:bg-neutral-800/80 border border-pink-200/50">
+                      <Type size={12} className="text-pink-500 flex-shrink-0" />
+                      <input
+                        type="text"
+                        value={customQuote}
+                        onChange={(e) => handleQuoteChange(e.target.value)}
+                        placeholder="Type any custom quote or love message…"
+                        className="flex-1 text-xs bg-transparent border-0 outline-hidden font-medium text-neutral-800 dark:text-neutral-100 placeholder:text-neutral-400"
+                        maxLength={120}
+                        aria-label="Custom quote for postcard"
+                      />
+                    </div>
                   )}
                 </div>
 
-                {/* Print Paper Graphic */}
+                {/* Print Paper Graphic Preview */}
                 <div className="relative group max-w-full flex justify-center overflow-hidden py-1">
                   <motion.div
                     animate={{ rotate: [-0.6, 0.4, -0.6], y: [0, -2, 0] }}
@@ -789,7 +1040,7 @@ export default function Photobooth() {
                     style={{
                       padding: template === "postcard" ? 8 : 10,
                       paddingBottom: template === "postcard" ? 12 : 24,
-                      background: "#ffffff",
+                      background: isDarkColor(paperColor) ? "#262629" : "#ffffff",
                       borderRadius: 14,
                       boxShadow: "0 18px 48px rgba(236,72,153,0.22), 0 4px 16px rgba(0,0,0,0.12)",
                       maxWidth: template === "postcard" ? "100%" : 240,
@@ -1134,7 +1385,7 @@ export default function Photobooth() {
                 }}
               >
                 <AlertCircle size={13} />
-                Upload failed. Please ensure the Supabase 'photobooth' storage bucket is public or has upload policy enabled.
+                Upload failed. Please ensure the Supabase &apos;photobooth&apos; storage bucket is public or has upload policy enabled.
               </motion.div>
             )}
           </AnimatePresence>
